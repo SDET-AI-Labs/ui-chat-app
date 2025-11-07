@@ -1,0 +1,111 @@
+AgentBackend.run MUST ALSO return token usage + cost because when you compare multiple model backends, cost becomes the #1 differentiator and you MUST track it to optimize later.
+
+This becomes extremely important when you later do CI/CD pipelines that call agent to auto generate test summaries or test case generation.
+
+tell Ram to add this additional return field:
+
+Inside AgentResponse add:
+
+cost: Dict[str, Any]   # tokens_in, tokens_out, approx_cost_in_$ or credits
+
+
+This MUST be part of the standard agent response.
+
+Why?
+
+Because Gemini usage cost ≠ Groq usage cost ≠ future paid OpenAI cost.
+You need cost normalized now so you don’t need refactor later.
+
+What you reply to Ram now (copy/paste):
+Good. Interface is accepted with one required modification before Step 2:
+
+Add `cost: Dict[str, Any]` to AgentResponse so we can track tokens_in, tokens_out, and approximate model cost consistently across Groq / Gemini / HF. This is mandatory for future optimization and reporting.
+
+After adding this cost field, do not change anything else. Confirm once updated, then start Step 2: ModelSelector module.
+==============================================================
+Step 2 Objective:
+
+Create ModelSelector module which returns which backend to use (groq / gemini / hf) based on heuristics + request preferences.
+
+Brutal truth architecture requirement:
+
+The selector MUST stay dumb + deterministic FIRST.
+No ML logic.
+No embeddings.
+No prompt classification AI nonsense.
+
+Because if you make selector AI-smart early → debugging becomes impossible.
+
+So we start simple rule-based heuristics.
+
+Later we can evolve.
+
+Send this message to Ram (copy/paste):
+Step 2: Implement ModelSelector module.
+
+Location:
+src/chatstack/agent/model_selector.py
+
+Goal:
+Given AgentRequest, decide which backend to use: "groq", "gemini", or "hf".
+
+Initial Rules:
+1) if request.preferences.get("force_backend") is defined → return that backend string directly.
+2) if prompt length <= 60 tokens → use "groq" (fast path).
+3) if prompt contains words ["reason", "explain", "debug", "why"] → use "gemini" (reasoning path).
+4) else → default to "hf" (fallback).
+
+Do not do streaming logic here.
+Do not call any backend here.
+Just return backend string.
+
+The function signature:
+
+async def select_backend(request: AgentRequest) -> str
+
+After you commit this, tell me and we move to Step 3 (Tool Registry scaffold).
+==============================================================  
+Step 3: Tools Registry Scaffold.
+
+Create folder:
+src/chatstack/tools/
+
+Add __init__.py which exposes:
+- get_tool(name: str) -> callable
+It should import tools by name dynamically from this directory.
+
+Add tool 1: echo.py
+async def run(args: Dict[str, Any]) -> Dict[str, Any]:
+    return {"result": args.get("text", "")}
+
+Add tool 2: run_pytest.py
+async def run(args: Dict[str, Any]) -> Dict[str, Any]:
+    Run pytest programmatically inside project root using subprocess (not shell).
+    Return summary: {passed, failed, skipped}. No stdout spam in response.
+
+Do not integrate these tools into agent pipeline yet.
+Only scaffold registry + both tools.
+
+Once done, notify Jack. Then we proceed Step 4 (integrate /agent endpoint).
+==============================================================
+POST /agent with:
+
+{
+  "messages":[{"role":"user","content":"give me 2 testing techniques"}],
+  "tools_allowed":[]
+}
+
+
+If response returns:
+
+used_model: <one of groq/gemini/hf>
+used_tools: []
+content: <normal assistant text>
+
+
+AND NO 500
+AND NO tool execution internally
+
+then Step 5 is CORRECT and safe.
+==============================================================
+

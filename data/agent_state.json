@@ -1,0 +1,45 @@
+{
+  "updated": "2025-11-07",
+  "note": "IDE Copilot is only for suggestions. The real agent is our FastAPI backend.",
+  "backend": {
+    "framework": "FastAPI",
+    "entrypoint": "chatstack.api.server:app",
+    "uvicorn": {
+      "host": "0.0.0.0",
+      "port": 8012
+    }
+  },
+  "tools": [
+    { "name": "echo" },
+    { "name": "run_pytest" },
+    { "name": "playwright_run", "features": ["screenshot", "visual_baseline_diff", "api_mode", "insecure_tls"] },
+    { "name": "db_query", "notes": "SELECT-only; uses env DB_KIND, DB_STRING" },
+    { "name": "excel_read" },
+    { "name": "test_from_excel", "domain": "ui", "purpose": "Read UI tests from Excel and run Playwright validations" },
+    { "name": "api_call", "notes": "JSON-only success; default POST header Content-Type: application/json; returns content_type & body snippet on non-JSON" }
+  ],
+  "data_policy": {
+    "excel": {
+      "separate_domains": true,
+      "api": { "file": "api_tests.xlsx", "sheet": "api_tests", "status": "active" },
+      "ui": { "file": "ui_tests.xlsx", "sheet": "ui_tests", "status": "planned" },
+      "db": { "file": "db_tests.xlsx", "sheet": "db_tests", "status": "planned" }
+    }
+  },
+  "files": {
+    "data_dir": "./data",
+    "present_examples": ["api_tests.xlsx", "agent_audit.db", "baseline/", "screenshots/"]
+  },
+  "settings": {
+    "env_loading": ".env loaded at startup via python-dotenv",
+    "debug_settings_fields": ["db_kind", "db_string"]
+  },
+  "error_handling": {
+    "pattern": "Each tool returns structured result or error dict; server merges into response metadata",
+    "api_call": {
+      "json_only": true,
+      "default_post_content_type": "application/json",
+      "non_json_diagnostics": ["content_type", "body_snippet"]
+    }
+  }
+}

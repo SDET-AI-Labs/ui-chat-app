@@ -1,0 +1,243 @@
+{
+  "updated": "2025-11-07",
+  "purpose": "Shared project knowledge for assistants and scripts. Source of truth for architecture, tools, data conventions, and how-to-run.",
+  "runtime": {
+    "language": "python",
+    "min_version": "3.10",
+    "venv": ".venv"
+  },
+  "backend": {
+    "framework": "FastAPI",
+    "entrypoint": "chatstack.api.server:app",
+    "run": {
+      "server": ".venv/Scripts/python.exe -m uvicorn chatstack.api.server:app --host 0.0.0.0 --port 8012"
+    },
+    "modules": {
+      "settings": "src/chatstack/settings.py",
+      "server": "src/chatstack/api/server.py",
+      "tools_dir": "src/chatstack/tools",
+      "store": "src/chatstack/store",
+      "models": "src/chatstack/models",
+      "utils": "src/chatstack/utils"
+    }
+  },
+  "tools": {
+    "echo": {
+      "contract": {
+        "run(args)": {
+          "args": {
+            "text": "string"
+          },
+          "returns": {
+            "text": "string"
+          }
+        }
+      }
+    },
+    "run_pytest": {
+      "contract": {
+        "run(args)": {
+          "args": {
+            "tests": "optional[list[str]]"
+          },
+          "returns": {
+            "result": "summary"
+          }
+        }
+      }
+    },
+    "playwright_run": {
+      "features": [
+        "page mode",
+        "api mode",
+        "screenshot",
+        "visual_baseline_diff",
+        "insecure_tls"
+      ],
+      "contract": {
+        "run(args)": {
+          "args": {
+            "mode": "page|api",
+            "script": "string path",
+            "url": "optional[str]",
+            "baseline": "optional[bool]",
+            "insecure": "optional[bool]"
+          },
+          "returns": {
+            "ok": "bool",
+            "artifacts": "paths"
+          }
+        }
+      }
+    },
+    "db_query": {
+      "notes": "SELECT-only",
+      "env": [
+        "DB_KIND",
+        "DB_STRING"
+      ]
+    },
+    "excel_read": {
+      "sandbox": "./data only",
+      "contract": {
+        "args": {
+          "file": "string",
+          "sheet": "string"
+        },
+        "returns": {
+          "rows": "list[dict]"
+        }
+      }
+    },
+    "test_from_excel": {
+      "domain": "ui",
+      "purpose": "Reads Excel and runs Playwright validations sequentially"
+    },
+    "api_call": {
+      "policy": "JSON-only success",
+      "defaults": {
+        "POST.headers.Content-Type": "application/json"
+      },
+      "errors": {
+        "include": [
+          "status_code",
+          "content_type",
+          "body_snippet"
+        ]
+      }
+    }
+  },
+  "data": {
+    "dir": "./data",
+    "policy": {
+      "excel": {
+        "separate_domains": true,
+        "api": {
+          "file": "api_tests.xlsx",
+          "sheet": "api_tests",
+          "columns": [
+            "module",
+            "description",
+            "method",
+            "url",
+            "body",
+            "headers",
+            "expected_status",
+            "actual_status",
+            "expected_field",
+            "expected_value",
+            "actual_value",
+            "status",
+            "last_run",
+            "result"
+          ]
+        },
+        "ui": {
+          "file": "ui_tests.xlsx",
+          "sheet": "ui_tests",
+          "columns": [
+            "module",
+            "description",
+            "url",
+            "expected_title",
+            "actual_title",
+            "expected_elements",
+            "found_elements",
+            "validate_text",
+            "actual_text",
+            "status",
+            "last_run",
+            "result"
+          ],
+          "status": "planned"
+        },
+        "db": {
+          "file": "db_tests.xlsx",
+          "sheet": "db_tests",
+          "columns": [
+            "module",
+            "description",
+            "query",
+            "expected_rows",
+            "actual_rows",
+            "expected_columns",
+            "actual_columns",
+            "expected_values",
+            "actual_values",
+            "validation_type",
+            "status",
+            "last_run",
+            "result"
+          ],
+          "status": "planned"
+        }
+      }
+    },
+    "present": [
+      "api_tests.xlsx",
+      "agent_audit.db",
+      "baseline/",
+      "screenshots/",
+      "agent_state.json",
+      "project_knowledge.json"
+    ]
+  },
+  "http_routes": {
+    "tool": {
+      "method": "POST",
+      "purpose": "Execute a named tool with args"
+    },
+    "debug_settings": {
+      "method": "GET",
+      "fields": [
+        "db_kind",
+        "db_string",
+        "env"
+      ]
+    }
+  },
+  "env": {
+    "loading": ".env loaded at startup via python-dotenv",
+    "vars": [
+      "DB_KIND",
+      "DB_STRING",
+      "MODEL_BACKEND",
+      "HF_TOKEN",
+      "OPENAI_API_KEY"
+    ],
+    "examples": ".env.example"
+  },
+  "dependencies": {
+    "file": "requirements.txt",
+    "major": [
+      "fastapi",
+      "uvicorn",
+      "pydantic-settings",
+      "requests",
+      "openpyxl",
+      "playwright",
+      "python-dotenv",
+      "Pillow",
+      "pytest"
+    ]
+  },
+  "workflows": {
+    "ui_from_excel": "Use test_from_excel tool with a UI Excel to run Playwright page validations",
+    "api_from_excel": "(Next) Create orchestrator to read data/api_tests.xlsx and call api_call per row"
+  },
+  "quality": {
+    "tests": "pytest via run_pytest tool",
+    "lint": "setup.cfg/pyproject.toml standard settings",
+    "status": {
+      "build": "PASS",
+      "lint": "UNKNOWN",
+      "tests": "UNKNOWN"
+    }
+  },
+  "next_steps": [
+    "Add ui_tests.xlsx and db_tests.xlsx with agreed columns",
+    "Create api_from_excel orchestrator mirroring UI one",
+    "Expose /debug/tools route with tool registry",
+    "Optional: allow_text mode in api_call for non-JSON APIs"
+  ]
+}
