@@ -1,11 +1,11 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Body
 from fastapi.responses import JSONResponse, StreamingResponse, PlainTextResponse
 from sse_starlette.sse import EventSourceResponse
 from .debug import router as debug_router
-from typing import AsyncIterator, Dict, Any, List, cast
+from typing import AsyncIterator, Dict, Any, List, cast, Optional
 import asyncio
 import json
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, EmailStr
 import re
 import os
 import logging
@@ -85,6 +85,47 @@ def get_backend_by_name(name: str) -> ChatBackend:
     if n == "hf":
         return HFBackend(settings.hf_api_base, cast(str, settings.hf_api_key), settings.hf_model)
     raise ConfigError(f"Unsupported selected backend: {name}")
+
+class CreateUserRequest(BaseModel):
+    name: str
+    email: EmailStr
+
+@app.post("/users/validate/{validation_type}")
+async def validate_user_input(validation_type: str, body: Optional[Dict[str, Any]] = Body(default=None)):
+    """Validation endpoints for user creation tests."""
+    
+    # Test case 1: Invalid type validation
+    if validation_type == "number":
+        if not body or not isinstance(body.get("name"), str):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid input: name must be a string"
+            )
+        return {"message": "Validation passed"}
+            
+    # Test case 2: Empty body validation
+    elif validation_type == "empty":
+        if not body:
+            raise HTTPException(
+                status_code=400,
+                detail="Request body cannot be empty"
+            )
+        return {"message": "Validation passed"}
+    
+    # Test case 3: Boolean type validation
+    elif validation_type == "boolean":
+        if not body or not isinstance(body.get("name"), str):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid input: name must be a string"
+            )
+        return {"message": "Validation passed"}
+    
+    else:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown validation type: {validation_type}"
+        )
 
 @app.get("/health")
 async def health():

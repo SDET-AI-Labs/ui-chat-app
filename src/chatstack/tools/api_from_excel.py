@@ -48,7 +48,7 @@ async def run(args: Dict[str, Any]) -> Dict[str, Any]:
             'url': str(test_case['url']),
             'body': test_case.get('body'),
             'headers': test_case.get('headers'),
-            'expected_status': int(str(test_case['status'])) if test_case.get('status') else None
+            'expected_status': int(str(test_case['expected_status'])) if test_case.get('expected_status') else None
         }
         
         try:
