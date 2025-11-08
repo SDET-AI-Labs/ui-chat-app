@@ -1,4 +1,4 @@
-"""UI test case insertion with uniqueness enforcement."""
+"""UI test case insertion with uniqueness enforcement and region-based visual testing."""
 from typing import Dict, Any, List
 from pathlib import Path
 import openpyxl
@@ -6,16 +6,32 @@ import json
 import hashlib
 import re
 from datetime import datetime
-
-from . import run_excel_suite
+from . import selector_utils
 
 # Configuration constants
-UI_TEST_FILE = "./data/ui_tests_test.xlsx"  # Use test file during development
+UI_TEST_FILE = "./data/ui_tests.xlsx"
 UI_TEST_SHEET = "ui_tests"
+DIFF_THRESHOLD = 0.02  # 2% threshold for visual diffs
+
+from . import run_excel_suite
 
 class DuplicateTestError(Exception):
     """Raised when attempting to insert a duplicate test case."""
     pass
+
+class InvalidRegionSelectorError(Exception):
+    """Raised when region selector is missing or invalid.
+    
+    Architecture Rule:
+    Region selectors are mandatory and must target specific components.
+    Full page validation is not allowed by design to ensure precise testing.
+    """
+    def __init__(self, message: str, selector: str | None = None):
+        if selector:
+            msg = f"{message}\nProvided selector: '{selector}'\nArchitecture Rule: Region-based validation is mandatory. Full page validation is not allowed."
+        else:
+            msg = f"{message}\nArchitecture Rule: Region-based validation is mandatory. Full page validation is not allowed."
+        super().__init__(msg)
 
 def _normalize_script(script: str) -> str:
     """Normalize script by removing whitespace and comments."""
@@ -41,22 +57,70 @@ def _normalize_script(script: str) -> str:
     normalized = re.sub(r'\s+', ' ', normalized)  # Replace multiple spaces with single space
     return normalized.strip()
 
+def _validate_region_selector(selector: str) -> bool:
+    """Validate that a region selector is provided and valid.
+    
+    Architecture Rule:
+    Region selector is REQUIRED. No full page fallback allowed.
+    This enforces strict component-based visual validation.
+    
+    Valid selectors:
+    - CSS selectors (e.g., '#id', '.class', '[data-testid="xyz"]')
+    - XPath expressions (e.g., '//div[@class="header"]')
+    
+    Invalid:
+    - Empty strings
+    - Whitespace only
+    - 'body', '*', or any full page selector
+    - Single tag names without specificity
+    - None values
+    """
+    if not selector or not isinstance(selector, str):
+        return False
+        
+    # Normalize selector
+    selector = selector_utils.normalize_region_selector(selector)
+    if not selector:
+        return False
+        
+    # Reject full page selectors
+    invalid_selectors = {'body', '*', 'html', 'document'}
+    if selector.lower() in invalid_selectors:
+        return False
+        
+    # Must have specificity (class, id, attribute)
+    if not any(char in selector for char in '.#['):
+        return False  # No specificity
+        
+    return True
+
 def _generate_test_key(test_case: Dict[str, Any]) -> str:
     """Generate uniqueness key for test case.
     
-    Key = SHA256(normalized_url::normalized_script)
+    Key = SHA256(normalized_url::normalized_script::normalized_region_selector)
     where:
     - url is lowercased + trimmed
     - script has whitespace and comments removed
+    - region_selector is normalized to canonical CSS form:
+        - lowercased
+        - redundant tags removed
+        - attribute syntax normalized
+        - whitespace normalized
+        - combinator spacing standardized
     """
     # Normalize URL: lowercase and trim
     url = str(test_case.get('url', '')).strip().lower()
     
     # Normalize script
-    script = _normalize_script(str(test_case.get('validate_script', '')))
+    script = _normalize_script(str(test_case.get('action_script', '')))
+
+    # Normalize region selector
+    region = selector_utils.normalize_region_selector(
+        str(test_case.get('region_selector', ''))
+    )
     
     # Create key with separator
-    key_str = f"{url}::{script}"
+    key_str = f"{url}::{script}::{region}"
     return hashlib.sha256(key_str.encode()).hexdigest()
 
 def _load_existing_keys(file_path: str | None = None) -> set:
@@ -110,42 +174,44 @@ def _load_existing_keys(file_path: str | None = None) -> set:
     return existing_keys
 
 async def run(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Insert UI test cases with duplicate prevention and run tests.
+    """Insert UI test cases with duplicate prevention and region-based visual testing.
     
     Args:
         test_cases: List of test cases to insert, each containing:
             - module: Test module/group
-            - description: Test description
+            - description: Test description 
             - url: Page URL to test
-            - script: Playwright script to run
-            - expected_result: Expected outcome
+            - action_script: Playwright script to run
+            - region_selector: CSS/XPath selector for UI region to validate
+            - baseline: Optional baseline image name
+            - expected: Expected validation result
             
     Returns:
         Dict with test execution results after insertion.
         
     Raises:
         DuplicateTestError: If any test case already exists
+        InvalidRegionSelectorError: If region selector is missing/invalid
         ValueError: For invalid/missing required fields
     """
     test_cases = args.get('test_cases', [])
     
     # Required fields for each test case
     required_fields = {
-        'module', 'description', 'url', 'validate_script',
-        'expected_result'
+        'module', 'description', 'url', 'action_script',
+        'region_selector', 'expected'
     }
     
     # Define column headers
     headers = [
         'module',
-        'description',
+        'description', 
         'url',
-        'validate_script',  # Changed from 'script' to match existing UI test structure
-        'expected_result',
-        'actual_result',
-        'status',
-        'last_run',
-        'result'
+        'action_script',
+        'region_selector',
+        'baseline',
+        'expected',
+        'status'
     ]
     
     # Load or create workbook and sheet
@@ -183,13 +249,23 @@ async def run(args: Dict[str, Any]) -> Dict[str, Any]:
         if missing:
             raise ValueError(f"Missing required fields: {missing}")
             
+        # Architecture Rule: Region selector is REQUIRED
+        region_selector = test.get('region_selector', '')
+        if not _validate_region_selector(region_selector):
+            raise InvalidRegionSelectorError(
+                "Invalid or missing region selector. Must specify component to validate.", 
+                region_selector
+            )
+            
         # Check for duplicates
         test_key = _generate_test_key(test)
         print(f"Generated key: {test_key}")
         print(f"Seen keys: {seen_keys}")
         if test_key in seen_keys:
             url = str(test.get('url', '')).strip()
-            raise DuplicateTestError(f"Duplicate test case for URL: {url}")
+            raise DuplicateTestError(
+                f"Duplicate test case for URL: {url} with region: {region_selector}"
+            )
         seen_keys.add(test_key)
     
     # All validation passed, insert test cases
@@ -216,8 +292,7 @@ async def run(args: Dict[str, Any]) -> Dict[str, Any]:
     wb.save(file_path)
     wb.close()
     
-    # Run tests and return results 
-    return await run_excel_suite.run({
-        'file': UI_TEST_FILE,
-        'sheet': UI_TEST_SHEET
-    })
+    return {
+        'message': 'Tests inserted successfully',
+        'count': len(test_cases)
+    }
