@@ -1,18 +1,63 @@
-# ChatStack — Pluggable Python Chat App (FastAPI + CLI)
+# ChatStack — Pluggable Python Chat App with UI Testing
 
-A minimal, extensible chat service that can talk to multiple model types:
-
-- **OpenAI-compatible APIs** (OpenAI, Groq, OpenRouter, etc.)
-- **Ollama** (local models on your machine)
+A minimal, extensible chat service that supports:
+- Multiple LLM backends (OpenAI, Groq, Ollama, etc.)
+- UI testing automation with Playwright
+- Excel-driven test management
+- Visual regression testing
+- Region-based component validation
 
 > Intentional constraints: No heavyweight frameworks. Simple, auditable code. Easy to extend.
 
----
+## Quick Start
 
-## 1) Quickstart
-
-### Prereqs
+### Prerequisites
 - Python 3.10+
+- Node.js 18+ (for Playwright)
+- Git
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/SDET-AI-Labs/ui-chat-app.git
+cd ui-chat-app
+```
+
+2. Create and activate a virtual environment:
+```bash
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Linux/Mac
+```
+
+3. Install the package with development dependencies:
+```bash
+pip install -e .[dev]
+```
+
+4. Install Playwright browsers:
+```bash
+playwright install
+```
+
+5. Set up configuration:
+```bash
+cp .env.example .env
+# Edit .env with your settings
+```
+
+### UI Testing Setup
+
+1. Create test data directory:
+```bash
+mkdir -p data/baseline data/screenshots
+```
+
+2. Initialize test Excel file:
+```bash
+python create_testcases_xlsx.py
+```
 - (Optional) [Ollama](https://ollama.com) installed locally for local models
 
 ### Create & activate a venv
